@@ -11,7 +11,8 @@ const KNOWN_KEYWORDS = new Set([
   'type', 'properties', 'required', 'items', 'enum',
   'description', 'default', 'format', 'minimum', 'maximum',
   'minItems', 'maxItems', 'minLength', 'maxLength',
-  'additionalProperties', 'title', 'examples'
+  'additionalProperties', 'title', 'examples',
+  '$defs', '$ref', 'oneOf'
 ]);
 
 function assertKnown(schema) {
@@ -30,14 +31,87 @@ function indent(source, spaces) {
   return source.split('\n').map((line, i) => i === 0 ? line : pad + line).join('\n');
 }
 
-function schemaToZod(schema) {
+function schemaToTypeScript(schema, refs = new Map()) {
+  if (!schema || typeof schema !== 'object') {
+    throw new Error(`Invalid schema fragment: ${JSON.stringify(schema)}`);
+  }
+  assertKnown(schema);
+
+  if (typeof schema.$ref === 'string') {
+    const ref = refs.get(schema.$ref);
+    if (!ref) {
+      throw new Error(`Unsupported or unresolved JSON Schema ref: ${schema.$ref}`);
+    }
+    return ref;
+  }
+  if (Array.isArray(schema.oneOf)) {
+    if (schema.oneOf.length === 0) {
+      throw new Error('oneOf cannot be empty');
+    }
+    return schema.oneOf
+      .map(option => schemaToTypeScript(option, refs))
+      .join(' |\n');
+  }
+  if (Array.isArray(schema.enum)) {
+    if (schema.enum.length === 0) {
+      throw new Error('enum cannot be empty');
+    }
+    return schema.enum.map(value => JSON.stringify(value)).join(' | ');
+  }
+  if (schema.type === 'string') return 'string';
+  if (schema.type === 'integer' || schema.type === 'number') return 'number';
+  if (schema.type === 'boolean') return 'boolean';
+  if (schema.type === 'array') {
+    if (!schema.items) throw new Error('array schema missing items');
+    return `Array<${indent(schemaToTypeScript(schema.items, refs), 2)}>`;
+  }
+  if (schema.type === 'object' || (!schema.type && schema.properties)) {
+    const properties = Object.entries(schema.properties ?? {});
+    if (properties.length === 0) {
+      return schema.additionalProperties === false
+        ? 'Record<string, never>'
+        : 'Record<string, unknown>';
+    }
+
+    const required = new Set(schema.required ?? []);
+    const lines = properties.map(([key, value]) => {
+      const hasDefault = value && Object.prototype.hasOwnProperty.call(value, 'default');
+      const optional = required.has(key) || hasDefault ? '' : '?';
+      const type = schemaToTypeScript(value, refs);
+      return `  ${escapeKey(key)}${optional}: ${indent(type, 2)};`;
+    });
+    if (schema.additionalProperties !== false) {
+      lines.push('  [key: string]: unknown;');
+    }
+    return `{\n${lines.join('\n')}\n}`;
+  }
+  if (!schema.type) return 'unknown';
+
+  throw new Error(`Unsupported schema: ${JSON.stringify(schema.type)} in ${JSON.stringify(schema)}`);
+}
+
+function schemaToZod(schema, refs = new Map()) {
   if (!schema || typeof schema !== 'object') {
     throw new Error(`Invalid schema fragment: ${JSON.stringify(schema)}`);
   }
   assertKnown(schema);
 
   let expr;
-  if (Array.isArray(schema.enum)) {
+  if (typeof schema.$ref === 'string') {
+    const ref = refs.get(schema.$ref);
+    if (!ref) {
+      throw new Error(`Unsupported or unresolved JSON Schema ref: ${schema.$ref}`);
+    }
+    expr = ref;
+  } else if (Array.isArray(schema.oneOf)) {
+    if (schema.oneOf.length === 0) {
+      throw new Error('oneOf cannot be empty');
+    }
+    const options = schema.oneOf.map(option => schemaToZod(option, refs));
+    expr = options.length === 1
+      ? options[0]
+      : `z.union([\n${options.map(option => `  ${indent(option, 2)}`).join(',\n')}\n])`;
+  } else if (Array.isArray(schema.enum)) {
     if (schema.enum.length === 0) {
       throw new Error('enum cannot be empty');
     }
@@ -70,7 +144,7 @@ function schemaToZod(schema) {
     expr = 'z.boolean()';
   } else if (schema.type === 'array') {
     if (!schema.items) throw new Error('array schema missing items');
-    expr = `z.array(${schemaToZod(schema.items)})`;
+    expr = `z.array(${schemaToZod(schema.items, refs)})`;
     if (typeof schema.minItems === 'number') expr += `.min(${schema.minItems})`;
     if (typeof schema.maxItems === 'number') expr += `.max(${schema.maxItems})`;
   } else if (schema.type === 'object' || (!schema.type && schema.properties)) {
@@ -81,7 +155,7 @@ function schemaToZod(schema) {
       expr = 'z.object({})';
     } else {
       const lines = entries.map(([key, value]) => {
-        const inner = schemaToZod(value);
+        const inner = schemaToZod(value, refs);
         const desc = typeof value?.description === 'string'
           ? `.describe(${JSON.stringify(value.description)})`
           : '';
@@ -118,12 +192,46 @@ function schemaToZod(schema) {
   return expr;
 }
 
-function main() {
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+function definitionName(toolName, definitionName) {
+  const words = `${toolName}_${definitionName}`.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  const identifier = words.map(word => word[0].toUpperCase() + word.slice(1)).join('');
+  return `${identifier}Schema`;
+}
+
+function definitionTypeName(toolName, name) {
+  return definitionName(toolName, name).replace(/Schema$/, '');
+}
+
+function definitionRefs(tool) {
+  return new Map(
+    Object.keys(tool.inputSchema?.$defs ?? {}).map(name => [
+      `#/$defs/${name}`,
+      definitionName(tool.name, name),
+    ]),
+  );
+}
+
+function definitionTypeRefs(tool) {
+  return new Map(
+    Object.keys(tool.inputSchema?.$defs ?? {}).map(name => [
+      `#/$defs/${name}`,
+      definitionTypeName(tool.name, name),
+    ]),
+  );
+}
+
+export function generateSchemas({
+  manifestPath: sourcePath = manifestPath,
+  outPath: destinationPath = outPath,
+} = {}) {
+  const manifest = JSON.parse(readFileSync(sourcePath, 'utf8'));
   if (!manifest || !Array.isArray(manifest.tools)) {
-    throw new Error(`Invalid manifest at ${manifestPath}: expected tools[]`);
+    throw new Error(`Invalid manifest at ${sourcePath}: expected tools[]`);
   }
   const tools = [...manifest.tools].sort((a, b) => a.name.localeCompare(b.name));
+  const hasDefinitions = tools.some(
+    tool => Object.keys(tool.inputSchema?.$defs ?? {}).length > 0,
+  );
 
   const lines = [];
   lines.push('// AUTO-GENERATED. Do not edit by hand.');
@@ -132,9 +240,35 @@ function main() {
   lines.push('');
   lines.push("import { z } from 'zod';");
   lines.push('');
+  for (const tool of tools) {
+    const definitions = tool.inputSchema?.$defs ?? {};
+    const refs = definitionTypeRefs(tool);
+    for (const [name, definition] of Object.entries(definitions)) {
+      const identifier = refs.get(`#/$defs/${name}`);
+      const type = schemaToTypeScript(definition, refs);
+      lines.push(`type ${identifier} = ${indent(type, 2)};`);
+    }
+  }
+  if (hasDefinitions) {
+    lines.push('');
+  }
+  for (const tool of tools) {
+    const definitions = tool.inputSchema?.$defs ?? {};
+    const refs = definitionRefs(tool);
+    const typeRefs = definitionTypeRefs(tool);
+    for (const [name, definition] of Object.entries(definitions)) {
+      const identifier = refs.get(`#/$defs/${name}`);
+      const typeIdentifier = typeRefs.get(`#/$defs/${name}`);
+      const zod = schemaToZod(definition, refs);
+      lines.push(`const ${identifier}: z.ZodType<${typeIdentifier}> = z.lazy(() => ${indent(zod, 2)});`);
+    }
+  }
+  if (hasDefinitions) {
+    lines.push('');
+  }
   lines.push('export const nitrosendToolSchemas = {');
   for (const tool of tools) {
-    const zod = schemaToZod(tool.inputSchema);
+    const zod = schemaToZod(tool.inputSchema, definitionRefs(tool));
     lines.push(`  ${escapeKey(tool.name)}: ${indent(zod, 2)},`);
   }
   lines.push('} as const;');
@@ -160,8 +294,11 @@ function main() {
   lines.push('}');
   lines.push('');
 
-  writeFileSync(outPath, lines.join('\n'));
-  console.log(`Wrote ${tools.length} schemas to ${outPath}`);
+  writeFileSync(destinationPath, lines.join('\n'));
+  console.log(`Wrote ${tools.length} schemas to ${destinationPath}`);
 }
 
-main();
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : undefined;
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  generateSchemas();
+}
