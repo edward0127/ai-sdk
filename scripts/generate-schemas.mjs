@@ -8,10 +8,11 @@ const manifestPath = resolve(__dirname, '..', '..', 'docs', 'nitrosend.mcp.json'
 const outPath = resolve(__dirname, '..', 'src', 'schemas.generated.ts');
 
 const KNOWN_KEYWORDS = new Set([
+  '$schema',
   'type', 'properties', 'required', 'items', 'enum',
   'description', 'default', 'format', 'minimum', 'maximum',
   'minItems', 'maxItems', 'minLength', 'maxLength',
-  'additionalProperties', 'title', 'examples',
+  'uniqueItems', 'additionalProperties', 'title', 'examples',
   '$defs', '$ref', 'oneOf'
 ]);
 
@@ -147,6 +148,12 @@ function schemaToZod(schema, refs = new Map()) {
     expr = `z.array(${schemaToZod(schema.items, refs)})`;
     if (typeof schema.minItems === 'number') expr += `.min(${schema.minItems})`;
     if (typeof schema.maxItems === 'number') expr += `.max(${schema.maxItems})`;
+    if (schema.uniqueItems === true) {
+      if (!['string', 'integer', 'number', 'boolean'].includes(schema.items.type)) {
+        throw new Error('uniqueItems is supported only for primitive array items');
+      }
+      expr += '.refine(values => new Set(values).size === values.length, { message: "Array items must be unique" })';
+    }
   } else if (schema.type === 'object' || (!schema.type && schema.properties)) {
     const props = schema.properties ?? {};
     const required = new Set(schema.required ?? []);

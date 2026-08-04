@@ -24,6 +24,7 @@ test('recursive definitions retain concrete inferred tool input types', async ()
       tools: [{
         name: 'nitro_compose_flow',
         inputSchema: {
+          $schema: 'https://json-schema.org/draft/2020-12/schema',
           type: 'object',
           $defs: {
             flowStep: {
@@ -41,6 +42,11 @@ test('recursive definitions retain concrete inferred tool input types', async ()
             },
           },
           properties: {
+            capabilities: {
+              type: 'array',
+              uniqueItems: true,
+              items: { type: 'string' },
+            },
             steps: {
               type: 'array',
               items: { $ref: '#/$defs/flowStep' },
@@ -113,6 +119,12 @@ test('recursive definitions retain concrete inferred tool input types', async ()
       }],
     });
     assert.equal(parsed.steps[0].yes[0].subject, 'Welcome');
+    assert.throws(() => (
+      generatedModule.nitrosendToolSchemas.nitro_compose_flow.parse({
+        steps: [{ type: 'email' }],
+        capabilities: ['profiles', 'profiles'],
+      })
+    ));
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
