@@ -79,7 +79,7 @@ const NitroComposeFlowFilterNodeSchema: z.ZodType<NitroComposeFlowFilterNode> = 
     z.object({
       name: z.string().describe("Filter name from the supplied filter schema"),
       predicate: z.enum(["eq", "not_eq", "cont", "not_cont", "start", "not_start", "end", "not_end", "gt", "lt", "gteq", "lteq", "present", "blank", "true", "false", "in", "not_in", "within_days", "not_within_days"]).describe("Ransack predicate or special predicate (within_days, not_within_days)"),
-      value: z.unknown().describe("Filter value — string, number, boolean, or array. For present/blank/true/false predicates, pass true.")
+      value: z.unknown().describe("Scalar or array; pass true for unary predicates.")
     }).passthrough(),
     z.object({
       type: z.literal("event"),
@@ -95,42 +95,42 @@ const NitroComposeFlowFilterNodeSchema: z.ZodType<NitroComposeFlowFilterNode> = 
     }).passthrough()
   ]));
 const NitroComposeFlowFlowStepSchema: z.ZodType<NitroComposeFlowFlowStep> = z.lazy(() => z.object({
-    action_name: z.string().describe("Stable node identity. Copy the exact contract action_name when retaining a scaffold or persisted node; omit it only for a genuinely new node.").optional(),
-    key: z.string().describe("Optional scaffold identity for a new node. Keep it when retaining that scaffold node; omit it for a genuinely new node.").optional(),
+    action_name: z.string().describe("Stable existing-node identity; preserve exactly.").optional(),
+    key: z.string().describe("Scaffold identity for a retained new node.").optional(),
     type: z.enum(["email", "sms", "wait", "split", "emit_event", "webhook", "subscribe", "unsubscribe"]),
-    subject: z.string().describe("Email subject line (email steps)").optional(),
-    body: z.string().describe("SMS body text (sms steps) or email plain text").optional(),
-    plain_text_mode: z.enum(["derived", "custom"]).describe("Email text-alternative authority returned by the composition scaffold: derived from design or custom body.").optional(),
-    preheader: z.string().describe("Email preheader (email steps)").optional(),
-    from_name: z.string().describe("Sender name override (new-flow email steps only)").optional(),
-    from_email: z.string().describe("Sender email override (new-flow email steps only)").optional(),
-    reply_to: z.string().describe("Reply-to override (new-flow email steps only)").optional(),
-    design: z.object({}).passthrough().describe("Email design: { sections: [...], theme: {...} }. Theme overrides support brand_color, bg_color, text_color, font_body, font_heading, heading_size, body_size, radius, spacing_density, button_background_color, button_text_color, button_padding, and logo_url.").optional(),
-    if_version: z.number().int().describe("Required optimistic concurrency token for an existing-flow email patch.").optional(),
-    template_version: z.number().int().describe("Read-only backing template version returned by Nitrosend.").optional(),
-    bcc: z.string().describe("Optional BCC for a new-flow email step. Never return it in an existing-flow creative patch.").optional(),
-    duration: z.number().int().describe("Wait duration in seconds (wait steps)").optional(),
-    event_name: z.string().describe("Event name to fire (emit_event steps). Lowercase alphanumeric with underscores.").optional(),
-    event_data: z.object({}).passthrough().describe("Static data payload for emitted event (emit_event steps)").optional(),
-    event_data_keys: z.array(z.string()).describe("Contract-only non-secret event-data key list. Copy exactly from next_call.").optional(),
-    forward_event_data: z.boolean().default(false).describe("Merge triggering event data into emitted event (emit_event steps)"),
-    url: z.string().describe("Webhook URL (webhook steps). Supports merge tags.").optional(),
-    endpoint_configured: z.boolean().describe("Contract-only non-secret webhook marker. Copy exactly from next_call; the server restores the URL and credentials.").optional(),
-    method: z.enum(["POST", "PUT"]).default("POST").describe("HTTP method (webhook steps)"),
-    headers: z.object({}).passthrough().describe("Custom HTTP headers as key-value pairs (webhook steps)").optional(),
+    subject: z.string().optional(),
+    body: z.string().optional(),
+    plain_text_mode: z.enum(["derived", "custom"]).describe("Whether plain text is derived or custom.").optional(),
+    preheader: z.string().optional(),
+    from_name: z.string().optional(),
+    from_email: z.string().optional(),
+    reply_to: z.string().optional(),
+    design: z.object({}).passthrough().describe("Email {sections, theme} design.").optional(),
+    if_version: z.number().int().describe("Version required for an existing email patch.").optional(),
+    template_version: z.number().int().optional(),
+    bcc: z.string().describe("BCC for a new-flow email only.").optional(),
+    duration: z.number().int().describe("Wait seconds.").optional(),
+    event_name: z.string().describe("Lowercase underscore event name.").optional(),
+    event_data: z.object({}).passthrough().describe("Static emitted-event data.").optional(),
+    event_data_keys: z.array(z.string()).describe("Frozen non-secret keys; copy from next_call.").optional(),
+    forward_event_data: z.boolean().default(false).describe("Forward triggering event data."),
+    url: z.string().describe("Webhook URL; supports merge tags.").optional(),
+    endpoint_configured: z.boolean().describe("Frozen endpoint marker; copy from next_call.").optional(),
+    method: z.enum(["POST", "PUT"]).default("POST"),
+    headers: z.object({}).passthrough().optional(),
     filters: z.union([
       z.array(NitroComposeFlowFilterNodeSchema),
       NitroComposeFlowFilterNodeSchema
-    ]).describe("Split condition filters. Use a flat array for simple AND filters, or a boolean tree group: {op: \"and\"|\"or\"|\"not\", conditions: [...]}.").optional(),
-    yes: z.array(NitroComposeFlowFlowStepSchema).describe("Steps for the yes branch").optional(),
-    no: z.array(NitroComposeFlowFlowStepSchema).describe("Steps for the no branch").optional(),
-    channel: z.enum(["phone", "email", "all"]).default("phone").describe("Channel for subscribe/unsubscribe steps")
+    ]).describe("Split filters: flat AND array or boolean group tree.").optional(),
+    yes: z.array(NitroComposeFlowFlowStepSchema).optional(),
+    no: z.array(NitroComposeFlowFlowStepSchema).optional(),
+    channel: z.enum(["phone", "email", "all"]).default("phone")
   }).strict());
 const NitroDefineSegmentFilterNodeSchema: z.ZodType<NitroDefineSegmentFilterNode> = z.lazy(() => z.union([
     z.object({
       name: z.string().describe("Filter name from the supplied filter schema"),
       predicate: z.enum(["eq", "not_eq", "cont", "not_cont", "start", "not_start", "end", "not_end", "gt", "lt", "gteq", "lteq", "present", "blank", "true", "false", "in", "not_in", "within_days", "not_within_days"]).describe("Ransack predicate or special predicate (within_days, not_within_days)"),
-      value: z.unknown().describe("Filter value — string, number, boolean, or array. For present/blank/true/false predicates, pass true.")
+      value: z.unknown().describe("Scalar or array; pass true for unary predicates.")
     }).passthrough(),
     z.object({
       type: z.literal("event"),
@@ -148,101 +148,101 @@ const NitroDefineSegmentFilterNodeSchema: z.ZodType<NitroDefineSegmentFilterNode
 
 export const nitrosendToolSchemas = {
   nitro_compose_campaign: z.object({
-    name: z.string().describe("Campaign name").optional(),
-    mode: z.enum(["create", "patch", "replace"]).default("create").describe("create: new campaign; patch: update provided fields on an existing draft campaign; replace: replace existing draft content/audience/schedule and requires confirm: true. Replace clears omitted audience/schedule. Patch/replace cannot change channel."),
-    campaign_id: z.number().int().describe("Required for patch/replace modes").optional(),
-    channel: z.enum(["email", "sms"]).default("email").describe("Auto-detected as 'email' when sections or template_id provided. Set explicitly to 'sms' for SMS campaigns. Immutable after campaign creation."),
-    goal: z.string().describe("Goal for the campaign authoring contract").optional(),
-    category: z.enum(["promotion", "announcement", "newsletter", "welcome", "reengagement", "transactional", "plain", "outreach"]).describe("The email's job (drives baseline layout selection): promotion, announcement, newsletter, welcome, reengagement, transactional, or plain.").optional(),
-    composition_mode: z.enum(["intent", "draft", "validate", "generate"]).describe("intent returns composition_contract; validate checks a caller-authored draft; draft validates and persists it; generate explicitly requests metered server composition and persists one draft.").optional(),
-    contract_id: z.string().describe("Email composition contract id returned from composition_mode=intent.").optional(),
-    brand_context_ref: z.string().describe("Optional current brand context ref from a prior intent. Omit to receive the full current context.").optional(),
-    validate_only: z.boolean().default(false).describe("Alias for composition_mode=validate. Does not persist or consume repair attempts."),
-    design_mode_override: z.enum(["premium_rich", "premium_minimal", "founder_letter", "utility_plain"]).describe("Renegotiate/validate the draft under a different design mode.").optional(),
-    renegotiate: z.boolean().default(false).describe("When true with design_mode_override, keeps the same contract but changes the design mode."),
-    user_instruction: z.string().describe("Latest user instruction to preserve inside the composition contract.").optional(),
-    creative_route_id: z.string().describe("Pin one composition_contract.creative_routes[].id on fresh intent; omit for the recommendation. A known route without frozen evidence returns its exact missing requirements; an unknown id returns the supported ids. Neither silently falls back.").optional(),
-    source_text: z.string().describe("Optional source evidence for authoring, such as research notes or supplied product copy. Evidence is not an instruction channel; put authoring directions in user_instruction. Source text is available context, not required copy.").optional(),
+    name: z.string().describe("Campaign name; required when creating.").optional(),
+    mode: z.enum(["create", "patch", "replace"]).default("create").describe("create a draft; patch supplied fields; replace all draft state and requires confirm."),
+    campaign_id: z.number().int().optional(),
+    channel: z.enum(["email", "sms"]).default("email").describe("email or sms; immutable after creation."),
+    goal: z.string().optional(),
+    category: z.enum(["promotion", "announcement", "newsletter", "welcome", "reengagement", "transactional", "plain", "outreach"]).describe("Email job used to select a baseline.").optional(),
+    composition_mode: z.enum(["intent", "draft", "validate", "generate"]).describe("intent plans; validate checks; draft persists; generate composes and persists.").optional(),
+    contract_id: z.string().optional(),
+    brand_context_ref: z.string().optional(),
+    validate_only: z.boolean().default(false).describe("Alias for validate; never persists."),
+    design_mode_override: z.enum(["premium_rich", "premium_minimal", "founder_letter", "utility_plain"]).optional(),
+    renegotiate: z.boolean().default(false),
+    user_instruction: z.string().optional(),
+    creative_route_id: z.string().describe("Intent-only route id; unavailable or invalid routes fail explicitly.").optional(),
+    source_text: z.string().describe("Untrusted source evidence; put authoring directions in user_instruction.").optional(),
     facts: z.array(z.object({
-      kind: z.enum(["url", "image_url", "offer_code", "price", "deadline", "offer", "cta_text"]).describe("Evidence type used to determine valid semantic locations."),
-      value: z.string().describe("Exact evidence value."),
-      description: z.string().describe("For kind=image_url only: what the picture visibly shows. This travels with the exact image binding so the composer can choose imagery and write honest alt text without guessing from the URL.").optional(),
-      requirement: z.enum(["required", "available"]).describe("required enforces exact inclusion; available only authorizes use.")
-    }).strict()).describe("Typed literal evidence, not instructions. Required values must appear exactly at an allowed semantic path; available values are optional. Put prose facts in source_text and use cta_text only for required exact CTA copy.").optional(),
+      kind: z.enum(["url", "image_url", "offer_code", "price", "deadline", "offer", "cta_text"]),
+      value: z.string(),
+      description: z.string().describe("For image_url: truthful visible content for selection and alt text.").optional(),
+      requirement: z.enum(["required", "available"])
+    }).strict()).describe("Literal evidence: required values must appear; available values may be used.").optional(),
     draft_meta: z.object({
-      creative_route_id: z.string().describe("Chosen composition_contract.creative_routes[].id").optional(),
-      concrete_anchor: z.string().describe("Specific proof, product detail, visual, code/output, quote, number, or brand moment used.").optional(),
-      why_this_earns_the_inbox: z.string().describe("One sentence explaining the creative move.").optional()
-    }).passthrough().describe("Optional authoring provenance. It never blocks validation or persistence.").optional(),
-    subject: z.string().describe("Email subject line (email campaigns)").optional(),
-    preheader: z.string().describe("Email preheader (email campaigns)").optional(),
-    from_name: z.string().describe("Sender name override").optional(),
-    from_email: z.string().describe("Sender email override").optional(),
-    reply_to: z.string().describe("Reply-to email override").optional(),
-    body: z.string().describe("SMS body text (sms campaigns) or email plain text").optional(),
-    plain_text_mode: z.enum(["derived", "custom"]).describe("Email text-alternative authority returned by the composition scaffold: derived from design or custom body.").optional(),
+      creative_route_id: z.string().optional(),
+      concrete_anchor: z.string().optional(),
+      why_this_earns_the_inbox: z.string().optional()
+    }).passthrough().describe("Optional authoring provenance; never blocks validation or persistence.").optional(),
+    subject: z.string().optional(),
+    preheader: z.string().optional(),
+    from_name: z.string().optional(),
+    from_email: z.string().optional(),
+    reply_to: z.string().optional(),
+    body: z.string().optional(),
+    plain_text_mode: z.enum(["derived", "custom"]).describe("Whether plain text is derived or custom.").optional(),
     sections: z.array(z.object({}).passthrough()).describe("Email design sections; requires subject. Images accept public or nitro_ingest media_url/image_url, never raw signed_id.").optional(),
     theme: z.object({}).passthrough().describe("Brand-theme overrides. logo_url must be public or a nitro_ingest media_url/image_url, never raw signed_id.").optional(),
-    template_id: z.number().int().describe("Clone design from existing template (email campaigns)").optional(),
-    if_version: z.number().int().describe("Optimistic concurrency token for patch/replace writes to an existing campaign template.").optional(),
+    template_id: z.number().int().optional(),
+    if_version: z.number().int().describe("Version token for conflict-safe writes.").optional(),
     audience: z.object({
-      audience_type: z.enum(["lists", "segment", "all_contacts"]).describe("Explicit audience target: lists, segment, or all_contacts").optional(),
-      contact_list_ids: z.array(z.number().int()).describe("Send to contacts in these lists (union with dedup)").optional(),
-      contact_list_id: z.number().int().describe("Deprecated — use contact_list_ids. Send to contacts in this list").optional(),
-      segment_id: z.number().int().describe("Filter trigger to contacts matching this segment").optional(),
-      exclude_segment_ids: z.array(z.number().int()).describe("Suppress contacts matching any of these segments (warmup suppression). Pass [] to clear; omit in patch mode to preserve.").optional(),
-      exclude_contact_list_ids: z.array(z.number().int()).describe("Suppress contacts who are members of any of these lists (warmup suppression). Pass [] to clear; omit in patch mode to preserve.").optional()
-    }).passthrough().describe("Target audience for the campaign. Use audience_type='all_contacts' only for an explicit all-subscribed-contacts send.").optional(),
-    scheduled_at: z.iso.datetime().describe("ISO 8601 delivery time (e.g. '2026-03-01T10:00:00Z'). Omit for manual send.").optional(),
-    dry_run: z.boolean().default(false).describe("Preview campaign without creating (default: false)"),
-    idempotency_key: z.string().max(128).describe("Required for every non-dry-run persistence mutation. Keep draft next_call's stable key through repairs/exact retries; never reuse for changed input.").optional(),
-    confirm: z.boolean().default(false).describe("Required for replace mode")
+      audience_type: z.enum(["lists", "segment", "all_contacts"]).describe("lists, segment, or all_contacts.").optional(),
+      contact_list_ids: z.array(z.number().int()).optional(),
+      contact_list_id: z.number().int().describe("Deprecated single list id.").optional(),
+      segment_id: z.number().int().optional(),
+      exclude_segment_ids: z.array(z.number().int()).describe("Suppressed segment ids; [] clears.").optional(),
+      exclude_contact_list_ids: z.array(z.number().int()).describe("Suppressed list ids; [] clears.").optional()
+    }).passthrough().describe("Target audience; all_contacts must be explicit.").optional(),
+    scheduled_at: z.iso.datetime().describe("ISO 8601 delivery time.").optional(),
+    dry_run: z.boolean().default(false),
+    idempotency_key: z.string().max(128).describe("Required for non-dry-run persistence; reuse only for an exact retry.").optional(),
+    confirm: z.boolean().default(false)
   }).strict(),
   nitro_compose_flow: z.object({
-    name: z.string().describe("Flow name (required for create mode)").optional(),
+    name: z.string().describe("Flow name; required when creating.").optional(),
     mode: z.enum(["create", "replace", "patch"]).default("create").describe("create: new complete graph; replace: complete existing draft graph; patch: name and/or selected email actions"),
-    flow_id: z.number().int().describe("Required for replace/patch modes").optional(),
-    expected_updated_at: z.string().describe("Presentation-level compatibility token. Prefer expected_draft_revision_id for graph writes.").optional(),
-    expected_draft_revision_id: z.number().int().describe("Exact draft revision ID from the latest flow read. Existing-flow authoring fails with a conflict if this draft has changed.").optional(),
-    goal: z.string().describe("Goal for the flow authoring contract").optional(),
-    composition_mode: z.enum(["intent", "draft", "validate", "generate"]).describe("intent returns composition_contract; validate checks a caller-authored draft; draft validates and persists it; generate explicitly requests metered server composition and persists one draft.").optional(),
-    contract_id: z.string().describe("Email composition contract id returned from composition_mode=intent.").optional(),
-    brand_context_ref: z.string().describe("Optional current brand context ref from a prior intent. Omit to receive the full current context.").optional(),
-    validate_only: z.boolean().default(false).describe("Alias for composition_mode=validate. Does not persist or consume repair attempts."),
-    design_mode_override: z.enum(["premium_rich", "premium_minimal", "founder_letter", "utility_plain"]).describe("Renegotiate/validate the draft under a different design mode.").optional(),
-    renegotiate: z.boolean().default(false).describe("When true with design_mode_override, keeps the same contract but changes the design mode."),
-    user_instruction: z.string().describe("Latest user instruction to preserve inside the composition contract.").optional(),
-    creative_route_id: z.string().describe("Default composition_contract.creative_routes[].id for all fresh flow emails; otherwise use email_baseline_selections. A known route without frozen evidence returns its exact missing requirements; an unknown id returns the supported ids. Neither silently falls back.").optional(),
+    flow_id: z.number().int().optional(),
+    expected_updated_at: z.string().describe("Legacy compatibility token; prefer draft revision id.").optional(),
+    expected_draft_revision_id: z.number().int().describe("Latest draft revision id for conflict-safe writes.").optional(),
+    goal: z.string().optional(),
+    composition_mode: z.enum(["intent", "draft", "validate", "generate"]).describe("intent plans; validate checks; draft persists; generate composes and persists.").optional(),
+    contract_id: z.string().optional(),
+    brand_context_ref: z.string().optional(),
+    validate_only: z.boolean().default(false).describe("Alias for validate; never persists."),
+    design_mode_override: z.enum(["premium_rich", "premium_minimal", "founder_letter", "utility_plain"]).optional(),
+    renegotiate: z.boolean().default(false),
+    user_instruction: z.string().optional(),
+    creative_route_id: z.string().describe("Intent-only sequence-wide route id; invalid choices fail.").optional(),
     email_baseline_selections: z.array(z.object({
       action_name: z.string(),
       route_id: z.string(),
       image_binding_ids: z.array(z.string()).refine(values => new Set(values).size === values.length, { message: "Array items must be unique" }).optional()
-    }).strict()).describe("Intent-only route choices by email action_name from the prior scaffold. Use a ready creative_routes[].id and its allocated image binding ids. Omitted emails keep their recommended/existing design; invalid choices fail explicitly.").optional(),
-    source_text: z.string().describe("Optional source evidence for authoring, such as research notes or supplied product copy. Evidence is not an instruction channel; put authoring directions in user_instruction. Source text is available context, not required copy.").optional(),
+    }).strict()).describe("Intent-only creative_routes[].id and image binding ids per email action_name.").optional(),
+    source_text: z.string().describe("Untrusted source evidence; put authoring directions in user_instruction.").optional(),
     facts: z.array(z.object({
-      kind: z.enum(["url", "image_url", "offer_code", "price", "deadline", "offer", "cta_text"]).describe("Evidence type used to determine valid semantic locations."),
-      value: z.string().describe("Exact evidence value."),
-      description: z.string().describe("For kind=image_url only: what the picture visibly shows. This travels with the exact image binding so the composer can choose imagery and write honest alt text without guessing from the URL.").optional(),
-      requirement: z.enum(["required", "available"]).describe("required enforces exact inclusion; available only authorizes use.")
-    }).strict()).describe("Typed literal evidence, not instructions. Required values must appear exactly at an allowed semantic path; available values are optional. Put prose facts in source_text and use cta_text only for required exact CTA copy.").optional(),
+      kind: z.enum(["url", "image_url", "offer_code", "price", "deadline", "offer", "cta_text"]),
+      value: z.string(),
+      description: z.string().describe("For image_url: truthful visible content for selection and alt text.").optional(),
+      requirement: z.enum(["required", "available"])
+    }).strict()).describe("Literal evidence: required values must appear; available values may be used.").optional(),
     draft_meta: z.object({
-      creative_route_id: z.string().describe("Chosen composition_contract.creative_routes[].id").optional(),
-      concrete_anchor: z.string().describe("Specific proof, product detail, visual, code/output, quote, number, or brand moment used.").optional(),
-      why_this_earns_the_inbox: z.string().describe("One sentence explaining the creative move.").optional()
-    }).passthrough().describe("Optional authoring provenance. It never blocks validation or persistence.").optional(),
+      creative_route_id: z.string().optional(),
+      concrete_anchor: z.string().optional(),
+      why_this_earns_the_inbox: z.string().optional()
+    }).passthrough().describe("Optional authoring provenance; never blocks validation or persistence.").optional(),
     trigger: z.object({
-      event: z.string().describe("Trigger event name. Built-in: contact_add, contact_enriched, keyword, message, list_add, list_remove, product_view, checkout, cart_add, cart_remove, cart_abandoned, browse_abandoned. Custom: any lowercase alphanumeric with underscores (e.g. order_confirmed, password_reset).").optional(),
-      action_name: z.string().describe("Persisted trigger identity. Preserve it when retaining the existing trigger.").optional(),
-      segment_id: z.number().int().describe("Optional segment filter on trigger").optional(),
-      contact_list_id: z.number().int().describe("Optional contact list for audience targeting").optional(),
-      resource_type: z.string().describe("Frozen trigger resource type returned by a composition contract.").optional(),
-      resource_id: z.unknown().describe("Frozen trigger resource id returned by a composition contract.").optional(),
-      data: z.object({}).passthrough().describe("Event-specific config (e.g. {keywords: ['STOP']})").optional()
+      event: z.string().describe("Built-in or lowercase underscore event name.").optional(),
+      action_name: z.string().describe("Persisted trigger identity; preserve it.").optional(),
+      segment_id: z.number().int().optional(),
+      contact_list_id: z.number().int().optional(),
+      resource_type: z.string().describe("Frozen trigger resource type.").optional(),
+      resource_id: z.unknown().describe("Frozen trigger resource id.").optional(),
+      data: z.object({}).passthrough().describe("Event-specific configuration.").optional()
     }).passthrough().optional(),
-    steps: z.array(NitroComposeFlowFlowStepSchema).describe("Ordered steps. email needs subject plus design/body; sms needs body; wait uses duration seconds; split uses filters plus yes/no; emit_event uses event_name; webhook uses url; subscribe/unsubscribe use channel. Nested splits are valid. Exact fields and enums are declared in $defs.flowStep.").optional(),
-    dry_run: z.boolean().default(false).describe("Preview graph without persisting"),
-    idempotency_key: z.string().max(128).describe("Required for every non-dry-run persistence mutation. Keep draft next_call's stable key through repairs/exact retries; validation keys may rotate.").optional(),
-    confirm: z.boolean().default(false).describe("Required for complete-graph replace mode")
+    steps: z.array(NitroComposeFlowFlowStepSchema).describe("Ordered graph steps; exact typed fields are in $defs.flowStep.").optional(),
+    dry_run: z.boolean().default(false),
+    idempotency_key: z.string().max(128).describe("Required for non-dry-run persistence; reuse only for an exact retry.").optional(),
+    confirm: z.boolean().default(false)
   }).strict(),
   nitro_configure_account: z.object({
     from_name: z.string().describe("Sender display name (e.g. 'Acme Marketing')").optional(),
@@ -258,25 +258,25 @@ export const nitrosendToolSchemas = {
     region: z.string().describe("Provider region where required, or the Mailgun sending domain").optional()
   }).strict(),
   nitro_control_delivery: z.object({
-    target_type: z.enum(["flow", "campaign"]).describe("Entity type"),
-    target_id: z.number().int().gte(1).describe("Entity ID"),
-    expected_brand_sid: z.string().min(1).describe("Required brand assertion. Copy meta.current_brand.sid from the result you reviewed; this never switches brands."),
-    operation: z.enum(["approve", "reject", "live", "schedule", "pause", "resume", "cancel", "archive", "restore", "delete"]).describe("Lifecycle operation. approve runs preflight. schedule is campaign-only (requires scheduled_at). delete requires confirm: true and only applies to never-sent non-live drafts/archives."),
-    scheduled_at: z.iso.datetime().describe("Required for schedule operation (ISO 8601 datetime)").optional(),
-    revision_id: z.number().int().gte(1).describe("Required for flow approve, reject, and live. Must be the exact current draft revision. Omit for pause/resume.").optional(),
-    confirm_send_to_all: z.boolean().describe("Required when making a campaign live or scheduled with audience_type='all_contacts'. Forces an explicit all-subscribed-contacts confirmation.").optional(),
-    confirm: z.boolean().describe("Required for operation='delete'.").optional(),
-    idempotency_key: z.string().describe("Optional retry key for campaign live sends. Reuse the same key after a timeout to recover the same delivery progress.").optional()
+    target_type: z.enum(["flow", "campaign"]),
+    target_id: z.number().int().gte(1),
+    expected_brand_sid: z.string().min(1).describe("Copy meta.current_brand.sid from the reviewed result."),
+    operation: z.enum(["approve", "reject", "live", "schedule", "pause", "resume", "cancel", "archive", "restore", "delete"]).describe("approve preflights; schedule is campaign-only; delete requires confirm and a never-sent draft."),
+    scheduled_at: z.iso.datetime().describe("Required for schedule.").optional(),
+    revision_id: z.number().int().gte(1).describe("Exact flow revision for approve, reject, or live.").optional(),
+    confirm_send_to_all: z.boolean().describe("Explicit all_contacts confirmation for live/schedule.").optional(),
+    confirm: z.boolean().describe("Required for delete.").optional(),
+    idempotency_key: z.string().describe("Campaign-live retry key; reuse only for the same send.").optional()
   }).strict(),
   nitro_define_segment: z.object({
-    name: z.string().describe("Segment name (required when preview_only: false)").optional(),
+    name: z.string().optional(),
     filters: z.union([
       z.array(NitroDefineSegmentFilterNodeSchema),
       NitroDefineSegmentFilterNodeSchema
-    ]).describe("Contact segment filters. Use a flat array for simple AND filters, or a boolean tree group: {op: \"and\"|\"or\"|\"not\", conditions: [...]}. A NOT group must contain exactly one condition. Leaves are attribute filters ({name, predicate, value}) or event filters ({type: \"event\", event, predicate, value?, within_days?, since?})."),
-    segment_id: z.number().int().describe("Existing segment ID to update (omit for new segment)").optional(),
-    preview_only: z.boolean().default(true).describe("Only preview matching contacts, do not save (default: true). Set to false + provide name to persist."),
-    idempotency_key: z.string().describe("Optional deduplication key").optional()
+    ]).describe("Flat AND filters or a boolean group tree of attribute/event filters."),
+    segment_id: z.number().int().optional(),
+    preview_only: z.boolean().default(true),
+    idempotency_key: z.string().optional()
   }).strict(),
   nitro_get_insights: z.object({
     scope: z.enum(["account", "flow", "campaign", "message"]).describe("Scope of insights: account-wide, per flow, per campaign, or per message"),
@@ -292,45 +292,45 @@ export const nitrosendToolSchemas = {
       last_name: z.string().optional(),
       country_code: z.string().optional(),
       source: z.string().optional(),
-      data: z.object({}).passthrough().describe("Custom contact fields. Values use the same merge and field-catalog rules as REST contact writes.").optional(),
-      opt_in: z.boolean().describe("Explicitly set subscription state. New email contacts default to subscribed when omitted; existing contacts preserve their current state. Must be explicitly true for SMS (TCPA).").optional()
-    }).passthrough()).describe("Array of contact objects (max 100): {email, phone, first_name, last_name, country_code, source, opt_in, data}. For larger custom-field updates, use the CSV path with columns mapping.").optional(),
-    import_id: z.number().int().describe("Existing Import record ID for CSV processing").optional(),
-    signed_id: z.string().describe("Upload signed_id returned by this tool's upload reservation after PUTing CSV bytes to direct_upload.url.").optional(),
+      data: z.object({}).passthrough().describe("Custom contact fields.").optional(),
+      opt_in: z.boolean().describe("Explicit subscription state; required true for SMS opt-in.").optional()
+    }).passthrough()).describe("Up to 100 contacts; use data for custom fields.").optional(),
+    import_id: z.number().int().optional(),
+    signed_id: z.string().describe("signed_id returned after the reserved CSV upload PUT.").optional(),
     upload: z.object({
-      filename: z.string().describe("Original CSV filename, e.g. contacts.csv."),
-      content_type: z.string().describe("MIME type. Use text/csv or application/csv."),
-      byte_size: z.number().int().describe("Exact file size in bytes before upload."),
-      checksum: z.string().describe("Base64 MD5 checksum required by Active Storage direct upload.")
-    }).strict().describe("Reserve an authorized upload link for a local CSV file. Provide filename, content_type, byte_size, and base64 MD5 checksum; then PUT bytes to the returned direct_upload.url and call this tool again with signed_id.").optional(),
-    resource: z.string().default("contacts").describe("Import resource. Use contacts for contact CSV imports."),
-    parser: z.string().default("default").describe("Parser name. Use default unless a future schema documents another parser."),
-    columns: z.object({}).passthrough().describe("Optional import column mapping object.").optional(),
+      filename: z.string(),
+      content_type: z.string(),
+      byte_size: z.number().int(),
+      checksum: z.string().describe("Base64 MD5.")
+    }).strict().describe("Reserve a CSV upload; PUT bytes, then process its signed_id.").optional(),
+    resource: z.string().default("contacts"),
+    parser: z.string().default("default"),
+    columns: z.object({}).passthrough().optional(),
     options: z.object({
       list_ids: z.array(z.number().int()).optional()
-    }).passthrough().describe("Import options, e.g. {list_ids: [123]} to add imported contacts to lists.").optional(),
-    dry_run: z.boolean().default(false).describe("Preview import without persisting (default: false)"),
-    idempotency_key: z.string().describe("Optional deduplication key").optional()
+    }).passthrough().describe("Import options, including list_ids.").optional(),
+    dry_run: z.boolean().default(false),
+    idempotency_key: z.string().optional()
   }).strict(),
   nitro_inbox: z.object({
-    command: z.enum(["list_queue", "get_item", "validate_reply", "list_mailbox", "get_thread", "get_thread_page", "get_message_body"]).describe("Inbox read command"),
-    action_item_id: z.number().int().describe("Queue item id for get_item or validate_reply").optional(),
-    conversation_id: z.number().int().describe("Conversation id for thread, body, or reply validation commands").optional(),
+    command: z.enum(["list_queue", "get_item", "validate_reply", "list_mailbox", "get_thread", "get_thread_page", "get_message_body"]),
+    action_item_id: z.number().int().optional(),
+    conversation_id: z.number().int().optional(),
     before_occurred_at: z.string().describe("Exact ISO 8601 thread cursor returned by get_thread or get_thread_page").optional(),
     before_message_id: z.number().int().describe("Exact thread cursor message id returned with before_occurred_at").optional(),
-    message_id: z.number().int().describe("Conversation message id for get_message_body").optional(),
+    message_id: z.number().int().optional(),
     offset: z.number().int().gte(0).describe("Exact sanitized-body character offset returned by get_thread or get_message_body").optional(),
     state: z.enum(["quarantine", "needs_human", "agent_ready", "handled", "needs_attention", "all"]).describe("Optional queue state filter; default needs_attention").optional(),
-    status: z.enum(["open", "closed", "archived"]).describe("Optional mailbox conversation status filter for list_mailbox").optional(),
-    query: z.string().describe("Optional mailbox search across subject/preview plus exact addresses").optional(),
-    inbox_id: z.number().int().describe("Optional mailbox inbox id filter").optional(),
-    page: z.number().int().describe("Page number, default 1").optional(),
-    per: z.number().int().describe("Results per page, max 50").optional(),
-    brand_context_ref: z.string().describe("Optional verified current brand context ref for get_item/get_thread. Omit on first read; oversized context returns an exact paged resource instead of partial JSON.").optional(),
+    status: z.enum(["open", "closed", "archived"]).optional(),
+    query: z.string().optional(),
+    inbox_id: z.number().int().optional(),
+    page: z.number().int().optional(),
+    per: z.number().int().optional(),
+    brand_context_ref: z.string().describe("Current context ref for get_item/get_thread.").optional(),
     reply_context_digest: z.string().describe("Current reply_context.context_digest required by validate_reply.").optional(),
-    subject: z.string().describe("Optional reply subject for validate_reply").optional(),
-    body: z.string().describe("Plain text reply body for validate_reply").optional(),
-    html: z.string().describe("Optional HTML reply body for validate_reply").optional()
+    subject: z.string().optional(),
+    body: z.string().optional(),
+    html: z.string().optional()
   }).strict(),
   nitro_inbox_action: z.object({
     command: z.enum(["send_reply", "send_reply_test", "mark_handled", "request_human", "release_to_agent", "mark_quarantine"]).describe("Inbox action command"),
@@ -345,24 +345,24 @@ export const nitrosendToolSchemas = {
     dry_run: z.boolean().default(false).describe("Validate send_reply or send_reply_test without creating or sending")
   }).strict(),
   nitro_ingest: z.object({
-    kind: z.string().describe("Asset kind to ingest. V1 supports image only.").optional(),
-    image_data: z.string().describe("Image payload as raw base64 bytes or a full data URL. PNG, JPEG, or WebP only; decoded size must be under 10MB.").optional(),
-    image_url: z.string().describe("Public http/https image URL to validate and ingest into durable Nitro-hosted storage before email composition. PNG, JPEG, or WebP only; remote file must be under 10MB.").optional(),
-    signed_id: z.string().describe("Upload signed_id returned by this tool's upload reservation after PUTing image bytes to direct_upload.url.").optional(),
-    description: z.string().describe("What the picture shows, e.g. 'Swimmer at dawn on St Kilda pier, cold light'. Stored with the image so later campaigns can choose it from the brand library, and used as its alt text. Applies to image_data, image_url, signed_id, and upload reservation sources.").optional(),
+    kind: z.string().optional(),
+    image_data: z.string().describe("Base64/data URL for PNG, JPEG, or WebP under 10 MB.").optional(),
+    image_url: z.string().describe("Public PNG, JPEG, or WebP URL under 10 MB.").optional(),
+    signed_id: z.string().describe("signed_id returned after the reserved upload PUT.").optional(),
+    description: z.string().describe("Truthful visible content for library selection and alt text.").optional(),
     upload: z.object({
-      kind: z.string().describe("Asset kind. V1 supports image only."),
-      filename: z.string().describe("Original image filename, e.g. hero.png."),
-      content_type: z.string().describe("MIME type. Use image/png, image/jpeg, or image/webp."),
-      byte_size: z.number().int().describe("Exact file size in bytes before upload."),
-      checksum: z.string().describe("Base64 MD5 checksum required by Active Storage direct upload.")
-    }).strict().describe("Reserve an authorized upload link for a local asset. V1 supports kind=image only. Provide filename, content_type, byte_size, and base64 MD5 checksum; then PUT bytes to the returned direct_upload.url and call this tool again with signed_id.").optional(),
-    filename: z.string().describe("Original filename for image_data uploads, or an optional filename override for image_url/signed_id sources.").optional(),
-    content_type: z.string().describe("Optional MIME type hint when image_data is raw base64 rather than a data URL.").optional()
+      kind: z.string(),
+      filename: z.string(),
+      content_type: z.string(),
+      byte_size: z.number().int(),
+      checksum: z.string().describe("Base64 MD5.")
+    }).strict().describe("Reserve a local-image upload; PUT bytes, then ingest its signed_id.").optional(),
+    filename: z.string().optional(),
+    content_type: z.string().optional()
   }).strict(),
   nitro_manage_audience: z.object({
-    operation: z.enum(["create_contact", "update_contact", "set_subscription", "manage_list", "record_event", "delete_segment", "bulk_tag"]).describe("Which audience operation to perform. Each operation expects specific params:\n\n- **create_contact** — params: {email (string), phone (string), opt_in (boolean, recommended: true), attributes: {first_name, last_name, country_code, source, data: {custom_field: value}}}\n- **update_contact** — params: {contact_id or contact_email (exactly one), attributes: {first_name, last_name, country_code, source, data: {custom_field: value}}}. Custom data is merged; omitted, null, and empty-string values do not erase existing values.\n- **set_subscription** — params: {contact_id (required), kind: \"email\"|\"phone\" (required), opt_in (boolean), opt_out (boolean), unsubscribe_all (boolean)}. Value auto-resolved from contact.\n- **manage_list** — params: {action: \"create\"|\"rename\"|\"delete\"|\"add_contacts\"|\"remove_contacts\" (required), list_id (integer), name (string), contact_ids (integer[]) or emails (string[])}\n- **record_event** — params: {contact_id or contact_email (one required), event (required, custom names allowed e.g. order_confirmed), data (object, max 32KB), resource_uid, resource_name, resource_url, amount}\n- **delete_segment** — params: {segment_id (required), force (boolean)}. Requires confirm: true.\n- **bulk_tag** — params: {contact_ids (integer[], required), tags (string[], required), tag_action: \"add\"|\"remove\"|\"set\" (default: \"add\")}"),
-    params: z.object({}).passthrough().describe("Operation-specific parameters. See operation description for required/optional fields."),
+    operation: z.enum(["create_contact", "update_contact", "set_subscription", "manage_list", "record_event", "delete_segment", "bulk_tag"]).describe("create_contact: email/phone, attributes, opt_in; update_contact: contact_id/contact_email, attributes; set_subscription: contact_id, kind, opt_in/opt_out/unsubscribe_all; manage_list: action, list_id/name, contact_ids/emails; record_event: contact_id/contact_email, event, data; delete_segment: segment_id, force; bulk_tag: contact_ids, tags, tag_action. Deletion requires confirm."),
+    params: z.object({}).passthrough().describe("Parameters named by operation. Contact custom fields belong in attributes.data."),
     dry_run: z.boolean().default(false).describe("Preview changes without persisting (default: false)"),
     confirm: z.boolean().default(false).describe("Required for destructive operations: delete_segment, manage_list with action='delete'"),
     idempotency_key: z.string().describe("Optional deduplication key. Same key returns cached result.").optional()
@@ -378,7 +378,7 @@ export const nitrosendToolSchemas = {
     }).strict().describe("Operation-specific parameters.").optional()
   }).strict(),
   nitro_manage_domains: z.object({
-    operation: z.enum(["add", "verify", "check_dns", "list", "remove"]).describe("Which domain operation to perform:\n\n- **add** — params: {domain_name (required, e.g. \"send.acme.com\"), author_domain (optional, e.g. \"acme.com\")}. Registers the technical sending domain with the email provider and returns DNS records. Managed SES also prepares the aligned visible From domain when the sending domain is a subdomain. Apex receiving MX is omitted unless forward-all is already active. Idempotent: calling add on a pending domain re-returns the DNS records.\n- **verify** — params: {domain_name (required)}. Checks with the email provider after every customer-facing sending record has propagated. Also runs independent DNS validation and returns per-record dns_health. Route-gated apex receiving MX is outside sender verification. If verified, completes the domain_verified onboarding step and unlocks sending. If still pending, returns the DNS records again so you can re-show them to the user.\n- **check_dns** — params: {domain_name (required)}. Runs independent DNS validation plus live HTTPS readiness for branded tracking. Does not call the email provider. Useful for diagnosing missing or incorrect customer-facing records, Nitro-managed delegate targets, and tracking TLS failures before verify. Every customer-facing sending record must pass; apex receiving MX is returned only after forward-all is active.\n- **list** — no params needed. Returns all account domains with their verification status and DNS records. Includes dns_health, dmarc_policy, domain_limit (from tier), and domains_used count.\n- **remove** — params: {domain_name (required), unpair (optional)}. Deletes the domain. Requires confirm: true. If the domain is paired, the first attempt explains whether its counterpart will also be removed; ask the user to confirm that exact outcome, then retry with unpair: true."),
+    operation: z.enum(["add", "verify", "check_dns", "list", "remove"]).describe("add, verify, check_dns, list, or remove; remove requires confirm."),
     params: z.object({
       domain_name: z.string().describe("Technical sending domain to manage (e.g. 'send.acme.com'). Required for add, verify, remove.").optional(),
       author_domain: z.string().describe("Optional visible From domain to authorize for managed SES (e.g. 'acme.com'). Must be the organizational domain of domain_name.").optional(),
@@ -387,23 +387,23 @@ export const nitrosendToolSchemas = {
     confirm: z.boolean().default(false).describe("Required for remove operation (destructive)")
   }).strict(),
   nitro_manage_outreach: z.object({
-    action: z.enum(["intent", "estimate", "start", "status", "pause", "resume", "cancel"]).describe("intent, estimate, start, status, pause, resume, or cancel."),
-    goal: z.string().describe("Operator's outreach objective. Supply on intent so the returned scaffold is grounded in the actual task.").optional(),
-    name: z.string().describe("Campaign name. Required for start.").optional(),
+    action: z.enum(["intent", "estimate", "start", "status", "pause", "resume", "cancel"]),
+    goal: z.string().describe("Outreach objective for intent.").optional(),
+    name: z.string().describe("Required for start.").optional(),
     target_profile: z.object({
       criteria: z.array(z.object({
-        key: z.string().describe("Stable criterion name used in coverage and fit findings.").optional(),
-        subject: z.enum(["prospect", "company", "signal"]).default("prospect").describe("The evidence subject evaluated by this criterion."),
-        field: z.string().describe("Canonical profile field, such as title, seniority, organization_industry, or organization_employee_range."),
+        key: z.string().optional(),
+        subject: z.enum(["prospect", "company", "signal"]).default("prospect"),
+        field: z.string().describe("Canonical person, company, or signal field."),
         operator: z.enum(["equals", "includes", "includes_any", "in", "range", "present"]).default("equals"),
-        value: z.unknown().describe("Expected scalar, list, or range. Omit only for the present operator.").optional(),
-        required: z.boolean().default(false).describe("A required unknown or mismatch prevents a person from matching."),
-        weight: z.number().default(1).describe("Relative weight for non-required fit ranking."),
+        value: z.unknown().describe("Scalar, list, or range; omit for present.").optional(),
+        required: z.boolean().default(false).describe("Unknown/mismatch prevents a match."),
+        weight: z.number().default(1),
         minimum_confidence: z.number().gte(0).lte(1).default(0),
-        maximum_age_days: z.number().int().gte(1).describe("Optional freshness ceiling for evidence used by this criterion.").optional()
+        maximum_age_days: z.number().int().gte(1).optional()
       }).strict()).min(1)
     }).strict().optional(),
-    capabilities: z.array(z.enum(["professional_profiles", "connected_profiles", "community_signals", "hiring_activity"])).refine(values => new Set(values).size === values.length, { message: "Array items must be unique" }).describe("Optional outcome capabilities returned by intent. Omit to use current defaults. Required capabilities are always included.").optional(),
+    capabilities: z.array(z.enum(["professional_profiles", "connected_profiles", "community_signals", "hiring_activity"])).refine(values => new Set(values).size === values.length, { message: "Array items must be unique" }).describe("Requested intent capabilities; required capabilities remain included.").optional(),
     seeds: z.array(z.object({
       domain: z.string().optional(),
       website_url: z.string().optional(),
@@ -413,74 +413,74 @@ export const nitrosendToolSchemas = {
       last_name: z.string().optional(),
       linkedin_url: z.string().optional(),
       source_record_id: z.string().optional()
-    }).strict()).max(100).describe("Optional bounded first-party person or company seeds. Supplying a company never makes it an outreach recipient.").optional(),
+    }).strict()).max(100).describe("Up to 100 first-party person/company seeds.").optional(),
     seed_artifacts: z.array(z.object({
       signed_id: z.string()
-    }).strict()).max(5).describe("Optional purpose-bound CSV seed manifests uploaded for the current account and brand.").optional(),
+    }).strict()).max(5).describe("Uploaded CSV seed manifests.").optional(),
     exclusions: z.object({
       company_domains: z.array(z.string()).max(100).refine(values => new Set(values).size === values.length, { message: "Array items must be unique" }).optional()
-    }).strict().describe("Optional campaign-local company exclusions. Brand suppressions for customers, active deals, replies, opt-outs, and manual blocks always apply.").optional(),
-    target_count: z.number().int().gte(1).lte(1000).describe("Maximum number of accepted qualified people to return.").optional(),
-    maximum_spend_cents: z.number().int().gte(0).describe("Customer-authorized maximum charge in USD cents. Use the estimate quote unchanged unless the operator narrows the target.").optional(),
-    campaign_id: z.number().int().describe("Required for status, pause, resume, and cancel.").optional(),
-    brand_context_ref: z.string().describe("Optional current ref returned by intent. A valid ref suppresses repeated inline context; a stale ref returns the fresh full context.").optional(),
-    idempotency_key: z.string().max(128).describe("Required for start. Reuse only for an exact retry of the same campaign input.").optional()
+    }).strict().describe("Campaign company exclusions; brand suppressions always apply.").optional(),
+    target_count: z.number().int().gte(1).lte(1000).describe("Qualified-person limit.").optional(),
+    maximum_spend_cents: z.number().int().gte(0).describe("Authorized USD-cent cap from estimate.").optional(),
+    campaign_id: z.number().int().describe("Required for status or control.").optional(),
+    brand_context_ref: z.string().describe("Current ref returned by intent.").optional(),
+    idempotency_key: z.string().max(128).describe("Required for start; reuse only for an exact retry.").optional()
   }).strict(),
   nitro_manage_template: z.object({
-    sections: z.array(z.object({}).passthrough()).describe("{id?, type, props, styles?} objects. Use the complete next_call baseline by default; nitro://schema is for full authoring. Persisted sections get stable ids. Images accept public or nitro_ingest media_url/image_url, never raw signed_id. Nitrosend supplies footer legal identity.").optional(),
+    sections: z.array(z.object({}).passthrough()).describe("Email sections. Follow next_call for composition; use nitro://schema only for full authoring. Images use public or nitro_ingest media_url/image_url, never signed_id.").optional(),
     section_updates: z.array(z.object({
-      id: z.string().describe("Stable section id from the stored template sections array. Preferred target.").optional(),
-      index: z.number().int().describe("0-based section index").optional(),
-      type: z.string().describe("Existing section type to target or assert").optional(),
-      occurrence: z.number().int().describe("0-based occurrence among sections of the requested type").optional(),
-      props: z.object({}).passthrough().describe("Props to shallow-merge. Only known visual/non-copy props use the direct path; copy-bearing or unknown props enter the composition contract.").optional(),
-      styles: z.object({}).passthrough().describe("Styles to shallow-merge into the target section").optional(),
+      id: z.string().describe("Preferred stable section id.").optional(),
+      index: z.number().int().optional(),
+      type: z.string().describe("Existing type to target or assert.").optional(),
+      occurrence: z.number().int().describe("0-based occurrence of type.").optional(),
+      props: z.object({}).passthrough().describe("Non-copy props to shallow-merge.").optional(),
+      styles: z.object({}).passthrough().describe("Styles to shallow-merge.").optional(),
       text_patch: z.object({
         prop: z.string().describe("String prop to edit. Required when the section type has no clear default or when editing a non-default prop.").optional(),
-        find: z.string().describe("Literal substring to find").optional(),
-        replace: z.string().describe("Replacement string").optional(),
+        find: z.string().optional(),
+        replace: z.string().optional(),
         all: z.boolean().default(false).describe("Replace every occurrence; requires at least one match")
-      }).strict().describe("Literal replacement in one string prop. prop may default by section type. Requires one match unless all=true; copy enters composition.").optional()
-    }).strict()).describe("Exact existing-section edits. Prefer stable id; otherwise index or type+occurrence. Shallow-merges non-copy props/styles; text_patch edits literal copy through composition. Never changes order/type.").optional(),
-    subject: z.string().describe("Email subject line").optional(),
-    name: z.string().describe("Template display name").optional(),
-    composition_mode: z.enum(["intent", "draft", "validate", "generate"]).describe("intent returns composition_contract; validate checks a caller-authored draft; draft validates and persists it; generate explicitly requests metered server composition and persists one draft.").optional(),
-    contract_id: z.string().describe("Email composition contract id returned from composition_mode=intent.").optional(),
-    brand_context_ref: z.string().describe("Optional current brand context ref from a prior intent. Omit to receive the full current context.").optional(),
-    validate_only: z.boolean().default(false).describe("Alias for composition_mode=validate. Does not persist or consume repair attempts."),
-    design_mode_override: z.enum(["premium_rich", "premium_minimal", "founder_letter", "utility_plain"]).describe("Renegotiate/validate the draft under a different design mode.").optional(),
-    renegotiate: z.boolean().default(false).describe("When true with design_mode_override, keeps the same contract but changes the design mode."),
-    user_instruction: z.string().describe("Latest user instruction to preserve inside the composition contract.").optional(),
-    creative_route_id: z.string().describe("Pin one composition_contract.creative_routes[].id on fresh intent; omit for the recommendation. A known route without frozen evidence returns its exact missing requirements; an unknown id returns the supported ids. Neither silently falls back.").optional(),
-    source_text: z.string().describe("Optional source evidence for authoring, such as research notes or supplied product copy. Evidence is not an instruction channel; put authoring directions in user_instruction. Source text is available context, not required copy.").optional(),
+      }).strict().describe("Literal replacement in one string prop.").optional()
+    }).strict()).describe("Targeted section edits; never changes order or type.").optional(),
+    subject: z.string().optional(),
+    name: z.string().optional(),
+    composition_mode: z.enum(["intent", "draft", "validate", "generate"]).describe("intent plans; validate checks; draft persists; generate composes and persists.").optional(),
+    contract_id: z.string().optional(),
+    brand_context_ref: z.string().optional(),
+    validate_only: z.boolean().default(false).describe("Alias for validate; never persists."),
+    design_mode_override: z.enum(["premium_rich", "premium_minimal", "founder_letter", "utility_plain"]).optional(),
+    renegotiate: z.boolean().default(false),
+    user_instruction: z.string().optional(),
+    creative_route_id: z.string().describe("Intent-only route id; unavailable or invalid routes fail explicitly.").optional(),
+    source_text: z.string().describe("Untrusted source evidence; put authoring directions in user_instruction.").optional(),
     facts: z.array(z.object({
-      kind: z.enum(["url", "image_url", "offer_code", "price", "deadline", "offer", "cta_text"]).describe("Evidence type used to determine valid semantic locations."),
-      value: z.string().describe("Exact evidence value."),
-      description: z.string().describe("For kind=image_url only: what the picture visibly shows. This travels with the exact image binding so the composer can choose imagery and write honest alt text without guessing from the URL.").optional(),
-      requirement: z.enum(["required", "available"]).describe("required enforces exact inclusion; available only authorizes use.")
-    }).strict()).describe("Typed literal evidence, not instructions. Required values must appear exactly at an allowed semantic path; available values are optional. Put prose facts in source_text and use cta_text only for required exact CTA copy.").optional(),
+      kind: z.enum(["url", "image_url", "offer_code", "price", "deadline", "offer", "cta_text"]),
+      value: z.string(),
+      description: z.string().describe("For image_url: truthful visible content for selection and alt text.").optional(),
+      requirement: z.enum(["required", "available"])
+    }).strict()).describe("Literal evidence: required values must appear; available values may be used.").optional(),
     draft_meta: z.object({
-      creative_route_id: z.string().describe("Chosen composition_contract.creative_routes[].id").optional(),
-      concrete_anchor: z.string().describe("Specific proof, product detail, visual, code/output, quote, number, or brand moment used.").optional(),
-      why_this_earns_the_inbox: z.string().describe("One sentence explaining the creative move.").optional()
-    }).passthrough().describe("Optional authoring provenance. It never blocks validation or persistence.").optional(),
-    preheader: z.string().describe("Email preheader text shown in inbox preview").optional(),
-    body: z.string().describe("Canonical plain-text alternative. Use with plain_text_mode=custom; derived mode refreshes it from sections.").optional(),
-    plain_text_mode: z.enum(["derived", "custom"]).describe("Text-alternative authority returned by the composition scaffold: derived from design or custom body.").optional(),
-    from_name: z.string().describe("Sender name (falls back to account default)").optional(),
-    from_email: z.string().describe("Sender email (falls back to account default)").optional(),
-    reply_to: z.string().describe("Reply-to email address").optional(),
-    theme: z.object({}).passthrough().describe("Overrides the declared brand-theme keys. logo_url must be public or a nitro_ingest media_url/image_url, never raw signed_id.").optional(),
-    template_id: z.number().int().describe("Template ID for update mode — provide with fields to change").optional(),
-    based_on: z.number().int().describe("Source template ID for clone mode — creates a copy").optional(),
-    if_version: z.number().int().describe("Optimistic concurrency — rejects update if template version mismatches").optional(),
-    goal: z.string().describe("Goal for the template authoring contract").optional(),
-    dry_run: z.boolean().default(false).describe("Validate and preview without persisting"),
-    idempotency_key: z.string().max(128).describe("Required for every non-dry-run persistence mutation. Keep draft next_call's stable key through repairs/exact retries; validation keys may rotate.").optional()
+      creative_route_id: z.string().optional(),
+      concrete_anchor: z.string().optional(),
+      why_this_earns_the_inbox: z.string().optional()
+    }).passthrough().describe("Optional authoring provenance; never blocks validation or persistence.").optional(),
+    preheader: z.string().optional(),
+    body: z.string().describe("Plain-text alternative for custom mode.").optional(),
+    plain_text_mode: z.enum(["derived", "custom"]).describe("Whether plain text is derived or custom.").optional(),
+    from_name: z.string().optional(),
+    from_email: z.string().optional(),
+    reply_to: z.string().optional(),
+    theme: z.object({}).passthrough().describe("Brand-theme overrides; logo_url uses public or nitro_ingest media_url/image_url, never signed_id.").optional(),
+    template_id: z.number().int().optional(),
+    based_on: z.number().int().optional(),
+    if_version: z.number().int().describe("Version token for conflict-safe writes.").optional(),
+    goal: z.string().optional(),
+    dry_run: z.boolean().default(false),
+    idempotency_key: z.string().max(128).describe("Required for non-dry-run persistence; reuse only for an exact retry.").optional()
   }).strict(),
   nitro_query: z.object({
     entity: z.enum(["flows", "campaigns", "templates", "segments", "contacts", "lists", "events", "imports", "messages", "suppressions", "history", "products"]).describe("Which entity type to query. Use nitro_search_contacts for full-text contact search."),
-    filters: z.object({}).passthrough().describe("Entity-specific filters. All entities support id (integer) to fetch a single record.\n\n- **flows** — status (draft/live/paused/archived/cancelled), campaign_id (integer|null), trigger_event (string), search (string)\n- **campaigns** — status (draft/scheduled/live/paused/completed/cancelled/archived), search (string)\n- **templates** — subject (string, ILIKE match on subject line)\n- **segments** — name (string, ILIKE match)\n- **contacts** — query (string, full-text search), subscribed_email (boolean), subscribed_phone (boolean), list_id (integer)\n- **lists** — name (string, ILIKE match)\n- **events** — name (string, exact event type), from (ISO 8601 datetime), to (ISO 8601 datetime)\n- **imports** — status (pending/processing/complete/failed/canceled/contact_us)\n- **messages** — channel (email/sms), status (queued/sent/failed), to (string, recipient address)\n- **suppressions** — email, reason (hard_bounce/soft_bounce/complaint/manual/admin), source_provider, active (boolean)\n- **history** — source (notification/tool), event_type, tool, actor, correlation_id, resource_uri, from, to\n- **products** — status (active/draft/archived/deleted), query (string, title/handle match)").optional(),
+    filters: z.object({}).passthrough().describe("Entity filters: flows status/campaign_id/trigger_event/search; campaigns status/search; templates subject; segments/lists name; contacts query/subscribed_email/subscribed_phone/list_id; events name/from/to; imports status; messages channel/status/to; suppressions email/reason/source_provider/active; history source/event_type/tool/actor/correlation_id/resource_uri/from/to; products status/query. All support integer id.").optional(),
     page: z.number().int().describe("Page number (default 1)").optional(),
     per: z.number().int().describe("Results per page (max 50, default 25)").optional()
   }).strict(),
@@ -535,8 +535,8 @@ export const nitrosendToolSchemas = {
     idempotency_key: z.string().min(1).describe("Required for live test sends. Reuse the same stable key on retry to prevent duplicate delivery.").optional()
   }).strict(),
   nitro_set_brand_kit: z.object({
-    url: z.string().describe("Website URL to scrape Brand Kit from").optional(),
-    logo_url: z.string().describe("Public or Nitro CDN URL to a logo image (png/jpg/webp/svg) to attach. For local logo files, upload via nitro_ingest first and pass the returned media_url/image_url (raw signed_id values are not accepted).").optional(),
+    url: z.string().optional(),
+    logo_url: z.string().describe("Public/Nitro image URL; ingest local logos first.").optional(),
     fields: z.object({
       brand_color: z.string().describe("Hex color e.g. #ff0000").optional(),
       text_color: z.string().describe("Hex color").optional(),
@@ -550,11 +550,11 @@ export const nitrosendToolSchemas = {
       company_name: z.string().optional(),
       physical_address: z.string().optional(),
       company_description: z.string().optional()
-    }).passthrough().describe("Direct Brand Kit field updates").optional(),
-    document: z.string().describe("Full brand voice markdown document").optional(),
-    dry_run: z.boolean().default(false).describe("Preview changes without persisting"),
-    mode: z.enum(["sync", "async"]).default("sync").describe("sync (default) or async for URL scraping"),
-    idempotency_key: z.string().max(128).describe("Required for non-dry-run URL scraping or remote logo fetches. Reuse the same key only for an exact retry. Direct fields/document updates may omit it.").optional()
+    }).passthrough().describe("Typed Brand Kit fields.").optional(),
+    document: z.string().optional(),
+    dry_run: z.boolean().default(false),
+    mode: z.enum(["sync", "async"]).default("sync"),
+    idempotency_key: z.string().max(128).describe("Required for live URL scraping or remote logo fetch; reuse only for an exact retry.").optional()
   }).strict(),
   nitro_set_memory: z.object({
     operation: z.enum(["read", "update", "patch", "append"]).describe("read: get current document. update: replace entirely. patch: replace a ## section by heading. append: add text to end."),
