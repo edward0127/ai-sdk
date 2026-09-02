@@ -246,7 +246,7 @@ export const nitrosendToolSchemas = {
   }).strict(),
   nitro_configure_account: z.object({
     from_name: z.string().describe("Sender display name (e.g. 'Acme Marketing')").optional(),
-    from_email: z.string().describe("Visible From address. May use the apex domain when an aligned sending subdomain authorizes it.").optional(),
+    from_email: z.string().describe("Exact visible From address to select. May use the apex when a ready aligned sending subdomain authorizes it.").optional(),
     reply_to: z.string().describe("Reply-to email address").optional(),
     test_email_recipients: z.array(z.email()).max(5).describe("Saved email addresses for test sends (max 5). Pass empty array to clear.").optional()
   }).strict(),
@@ -260,7 +260,7 @@ export const nitrosendToolSchemas = {
   nitro_control_delivery: z.object({
     target_type: z.enum(["flow", "campaign"]),
     target_id: z.number().int().gte(1),
-    expected_brand_sid: z.string().min(1).describe("Copy meta.current_brand.sid from the reviewed result."),
+    expected_brand_sid: z.string().min(1).describe("Optional reviewed-brand assertion. When available, copy meta.current_brand.sid from the reviewed result.").optional(),
     operation: z.enum(["approve", "reject", "live", "schedule", "pause", "resume", "cancel", "archive", "restore", "delete"]).describe("approve preflights; schedule is campaign-only; delete requires confirm and a never-sent draft."),
     scheduled_at: z.iso.datetime().describe("Required for schedule.").optional(),
     revision_id: z.number().int().gte(1).describe("Exact flow revision for approve, reject, or live.").optional(),
@@ -361,28 +361,31 @@ export const nitrosendToolSchemas = {
     content_type: z.string().optional()
   }).strict(),
   nitro_manage_audience: z.object({
-    operation: z.enum(["create_contact", "update_contact", "set_subscription", "manage_list", "record_event", "delete_segment", "bulk_tag"]).describe("create_contact: email/phone, attributes, opt_in; update_contact: contact_id/contact_email, attributes; set_subscription: contact_id, kind, opt_in/opt_out/unsubscribe_all; manage_list: action, list_id/name, contact_ids/emails; record_event: contact_id/contact_email, event, data; delete_segment: segment_id, force; bulk_tag: contact_ids, tags, tag_action. Deletion requires confirm."),
+    operation: z.enum(["create_contact", "update_contact", "set_subscription", "manage_list", "record_event", "delete_segment", "bulk_tag", "validate"]).describe("Choose one audience operation. validate accepts exactly one of contact_channel_ids, contact_ids, list_id, or segment_id. Dry-run quotes without mutation; execution needs idempotency_key and prepaid funds. Deletion needs confirm."),
     params: z.object({}).passthrough().describe("Parameters named by operation. Contact custom fields belong in attributes.data."),
     dry_run: z.boolean().default(false).describe("Preview changes without persisting (default: false)"),
     confirm: z.boolean().default(false).describe("Required for destructive operations: delete_segment, manage_list with action='delete'"),
     idempotency_key: z.string().describe("Optional deduplication key. Same key returns cached result.").optional()
   }).strict(),
   nitro_manage_billing: z.object({
-    operation: z.enum(["status", "checkout", "checkout_status", "plans", "add_funds", "funding_purchase_status"]).describe("Billing operation to perform"),
+    operation: z.enum(["status", "checkout", "checkout_status", "plans", "add_funds", "funding_purchase_status"]).describe("Billing operation. Start with status; use plans/checkout for subscriptions and add_funds/funding_purchase_status for prepaid balance."),
     params: z.object({
       plan_id: z.number().int().describe("Plan ID (required for checkout)").optional(),
       amount_cents: z.number().int().describe("Integer amount in minor currency units").optional(),
       currency: z.string().describe("Three-letter funding currency").optional(),
-      idempotency_key: z.string().describe("Stable key for this Add funds request").optional(),
+      instrument: z.enum(["stripe_checkout", "shopify_one_time"]).describe("Optional add-funds instrument; omit to use the account default").optional(),
       purchase_id: z.number().int().describe("Local funding purchase ID").optional()
-    }).strict().describe("Operation-specific parameters.").optional()
+    }).strict().describe("Operation parameters: checkout requires plan_id; add_funds requires amount_cents and currency; funding_purchase_status requires purchase_id.").optional(),
+    idempotency_key: z.string().describe("Required stable key for add_funds. Reuse it only for an unchanged request.").optional()
   }).strict(),
   nitro_manage_domains: z.object({
-    operation: z.enum(["add", "verify", "check_dns", "list", "remove"]).describe("add, verify, check_dns, list, or remove; remove requires confirm."),
+    operation: z.enum(["prepare_brand_subdomain", "select_brand_subdomain", "add", "verify", "check_dns", "list", "remove"]).describe("prepare_brand_subdomain locally materializes the shared-root sender and is idempotent.\nselect_brand_subdomain selects a ready sender with optional local_part and apex.\nadd registers a customer domain and returns required DNS records.\nverify checks provider and DNS readiness. check_dns diagnoses DNS and tracking HTTPS only.\nlist returns domains, readiness, records, DMARC, and allowance use.\nremove requires domain_name and confirm; retry paired removal with unpair after showing its effect."),
     params: z.object({
-      domain_name: z.string().describe("Technical sending domain to manage (e.g. 'send.acme.com'). Required for add, verify, remove.").optional(),
-      author_domain: z.string().describe("Optional visible From domain to authorize for managed SES (e.g. 'acme.com'). Must be the organizational domain of domain_name.").optional(),
-      unpair: z.boolean().describe("For remove only. After the paired-domain warning has been shown and its exact outcome confirmed, set true to remove the selected domain and tear down its identity pair.").optional()
+      domain_name: z.string().describe("Customer sending domain for add, verify, check_dns, or remove.").optional(),
+      author_domain: z.string().describe("Optional aligned visible From domain for Nitrosend SES.").optional(),
+      local_part: z.string().describe("Optional brand-subdomain From local part.").optional(),
+      apex: z.string().describe("Optional active Nitrosend sending apex.").optional(),
+      unpair: z.boolean().describe("Confirm removal of the domain's identity pair.").optional()
     }).strict().describe("Operation-specific parameters.").optional(),
     confirm: z.boolean().default(false).describe("Required for remove operation (destructive)")
   }).strict(),

@@ -19,6 +19,35 @@ test('NitrosendToolInput exposes per-tool input shape', () => {
   assert.equal(parsed.subject, 'Hi');
 });
 
+test('control delivery keeps the reviewed-brand assertion optional and strict', () => {
+  const schema = nitrosendToolSchemas.nitro_control_delivery;
+  const base = {
+    target_type: 'campaign' as const,
+    target_id: 7,
+    operation: 'approve' as const,
+  };
+
+  const withoutAssertions: NitrosendToolInput<'nitro_control_delivery'> = schema.parse(base);
+  assert.equal(withoutAssertions.expected_brand_sid, undefined);
+  // Flow approve/reject/live enforce revision_id conditionally in the domain layer.
+  assert.equal(withoutAssertions.revision_id, undefined);
+
+  const withAssertions: NitrosendToolInput<'nitro_control_delivery'> = schema.parse({
+    ...base,
+    expected_brand_sid: 'brand-acme',
+    revision_id: 42,
+  });
+  const revisionId: number | undefined = withAssertions.revision_id;
+  assert.equal(withAssertions.expected_brand_sid, 'brand-acme');
+  assert.equal(revisionId, 42);
+
+  assert.throws(() => schema.parse({ ...base, expected_brand_sid: '' }));
+  assert.throws(() => schema.parse({ ...base, unexpected: true }));
+  assert.throws(() => schema.parse({ target_id: 7, operation: 'approve' }));
+  assert.throws(() => schema.parse({ target_type: 'campaign', operation: 'approve' }));
+  assert.throws(() => schema.parse({ target_type: 'campaign', target_id: 7 }));
+});
+
 test('NarrowedNitrosendTools restricts keys to the requested subset', () => {
   type Subset = NarrowedNitrosendTools<['nitro_get_status', 'nitro_compose_campaign']>;
   // @ts-expect-error — nitro_compose_flow not in the subset
