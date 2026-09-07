@@ -333,7 +333,7 @@ export const nitrosendToolSchemas = {
     html: z.string().optional()
   }).strict(),
   nitro_inbox_action: z.object({
-    command: z.enum(["send_reply", "send_reply_test", "mark_handled", "request_human", "release_to_agent", "mark_quarantine"]).describe("Inbox action command"),
+    command: z.enum(["send_reply", "send_reply_test", "mark_handled", "request_human", "release_to_agent", "mark_quarantine", "classify_spam", "set_sender_policy", "set_read_state", "set_contact"]).describe("Inbox action command"),
     action_item_id: z.number().int().describe("Queue item id for queue-gated commands").optional(),
     conversation_id: z.number().int().describe("Mailbox conversation id for reply commands").optional(),
     subject: z.string().describe("Optional reply subject for send_reply or send_reply_test").optional(),
@@ -342,7 +342,18 @@ export const nitrosendToolSchemas = {
     reply_context_digest: z.string().describe("Current reply_context.context_digest from nitro_inbox get_item/get_thread. Required for reply commands.").optional(),
     to: z.array(z.string()).max(5).describe("Explicit test recipients for send_reply_test").optional(),
     idempotency_key: z.string().describe("Required for all action commands").optional(),
-    dry_run: z.boolean().default(false).describe("Validate send_reply or send_reply_test without creating or sending")
+    dry_run: z.boolean().default(false).describe("Validate send_reply or send_reply_test without creating or sending"),
+    classification: z.enum(["spam", "not_spam"]).describe("Spam feedback for classify_spam").optional(),
+    inbox_id: z.number().int().describe("Inbox id for sender policy").optional(),
+    matcher_type: z.enum(["address", "domain"]).optional(),
+    matcher_value: z.string().optional(),
+    decision: z.enum(["allow", "block"]).optional(),
+    read: z.boolean().describe("Read or unread state for set_read_state").optional(),
+    last_read_message_id: z.number().int().optional(),
+    contact_id: z.number().int().describe("Existing contact id for set_contact").optional(),
+    create_contact: z.boolean().default(false),
+    first_name: z.string().optional(),
+    last_name: z.string().optional()
   }).strict(),
   nitro_ingest: z.object({
     kind: z.string().optional(),
@@ -371,12 +382,13 @@ export const nitrosendToolSchemas = {
     operation: z.enum(["status", "checkout", "checkout_status", "plans", "add_funds", "funding_purchase_status"]).describe("Billing operation. Start with status; use plans/checkout for subscriptions and add_funds/funding_purchase_status for prepaid balance."),
     params: z.object({
       plan_id: z.number().int().describe("Plan ID (required for checkout)").optional(),
+      confirm: z.boolean().describe("Set true only after operator confirmation when checkout reports confirmation_required").optional(),
       amount_cents: z.number().int().describe("Integer amount in minor currency units").optional(),
       currency: z.string().describe("Three-letter funding currency").optional(),
       instrument: z.enum(["stripe_checkout", "shopify_one_time"]).describe("Optional add-funds instrument; omit to use the account default").optional(),
-      purchase_id: z.number().int().describe("Local funding purchase ID").optional()
-    }).strict().describe("Operation parameters: checkout requires plan_id; add_funds requires amount_cents and currency; funding_purchase_status requires purchase_id.").optional(),
-    idempotency_key: z.string().describe("Required stable key for add_funds. Reuse it only for an unchanged request.").optional()
+      purchase_id: z.number().int().describe("Local purchase ID returned by checkout or add_funds, interpreted by operation").optional()
+    }).strict().describe("Operation parameters: checkout requires plan_id and may require confirm; checkout_status accepts its plan purchase_id; add_funds requires amount_cents and currency; funding_purchase_status requires its funding purchase_id.").optional(),
+    idempotency_key: z.string().max(128).describe("Required stable key for checkout and add_funds. Reuse it only for an unchanged request.").optional()
   }).strict(),
   nitro_manage_domains: z.object({
     operation: z.enum(["prepare_brand_subdomain", "select_brand_subdomain", "add", "verify", "check_dns", "list", "remove"]).describe("prepare_brand_subdomain locally materializes the shared-root sender and is idempotent.\nselect_brand_subdomain selects a ready sender with optional local_part and apex.\nadd registers a customer domain and returns required DNS records.\nverify checks provider and DNS readiness. check_dns diagnoses DNS and tracking HTTPS only.\nlist returns domains, readiness, records, DMARC, and allowance use.\nremove requires domain_name and confirm; retry paired removal with unpair after showing its effect."),
@@ -492,10 +504,12 @@ export const nitrosendToolSchemas = {
     message: z.string().describe("Complete, self-contained summary of the issue. Must fit within 1500 characters; do not rely on truncation.")
   }).strict(),
   nitro_review_delivery: z.object({
-    target_type: z.enum(["template", "flow", "campaign"]).describe("Entity type to review"),
-    target_id: z.number().int().gte(1).describe("Entity ID to review"),
+    target_type: z.enum(["template", "flow", "campaign"]).describe("Entity type to review").optional(),
+    target_id: z.number().int().gte(1).describe("Entity ID to review").optional(),
     revision_id: z.number().int().gte(1).describe("Required for flows. Exact immutable flow revision to review.").optional(),
-    contact_id: z.number().int().gte(1).describe("Optional contact ID for merge-tag personalization during review").optional()
+    contact_id: z.number().int().gte(1).describe("Optional contact ID for merge-tag personalization during review").optional(),
+    subject: z.string().max(998).describe("Subject for a self-contained inline email review").optional(),
+    html: z.string().min(1).max(262144).describe("Rendered HTML for a self-contained inline email review").optional()
   }).strict(),
   nitro_search_contacts: z.object({
     query: z.string().describe("Email address, name, or phone number"),
@@ -521,7 +535,7 @@ export const nitrosendToolSchemas = {
     body: z.string().describe("Message body. Required for SMS. Optional plain text for email.").optional(),
     template_id: z.number().int().describe("Load email design from an existing template (email only)").optional(),
     data: z.object({}).passthrough().describe("Transactional merge variables. Use in email templates as {{ data.order_id }} or nested paths like {{ data.customer.name }}.").optional(),
-    idempotency_key: z.string().min(1).describe("Required for live sends. Reuse the same stable key on retry to prevent duplicate delivery.").optional(),
+    idempotency_key: z.string().min(1).describe("Required for live sends. Reuse the same stable key on retry to prevent duplicate delivery."),
     dry_run: z.boolean().default(false).describe("Validate and preview without sending")
   }).strict(),
   nitro_send_test_message: z.object({
@@ -534,6 +548,7 @@ export const nitrosendToolSchemas = {
     channel: z.enum(["auto", "email", "sms"]).default("auto").describe("Channel to test. Use auto unless a standalone template is ambiguous."),
     contact_id: z.number().int().gte(1).describe("Contact ID for recipient and merge-tag personalization. If present, this contact supplies the recipient address/phone.").optional(),
     to: z.array(z.string()).max(5).describe("Explicit test recipients. Use email addresses for email targets and E.164 phone numbers for SMS targets.").optional(),
+    data: z.object({}).passthrough().describe("Sample values for required data.* merge fields in an email test.").optional(),
     dry_run: z.boolean().default(false).describe("Validate target and recipients without sending."),
     idempotency_key: z.string().min(1).describe("Required for live test sends. Reuse the same stable key on retry to prevent duplicate delivery.").optional()
   }).strict(),
